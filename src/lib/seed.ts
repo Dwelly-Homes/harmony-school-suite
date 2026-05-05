@@ -51,7 +51,7 @@ export async function ensureSeed() {
     for (let d = 0; d < 14; d++) {
       const date = new Date(today); date.setDate(date.getDate() - d);
       const r = Math.random();
-      const status = r > 0.85 ? "absent" : r > 0.78 ? "late" : "present";
+      const status: "present" | "absent" | "late" = r > 0.85 ? "absent" : r > 0.78 ? "late" : "present";
       attendance.push({ student_id: s.id, class_id: s.class_id, date: date.toISOString().slice(0, 10), status });
     }
   }
