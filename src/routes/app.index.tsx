@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { StatCard } from "@/components/stat-card";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Users, GraduationCap, BookOpen, CalendarCheck, Plus, ClipboardCheck, Receipt } from "lucide-react";
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, subMonths, startOfMonth } from "date-fns";
+import { getDashboardSnapshot } from "@/data/mockData";
 
 export const Route = createFileRoute("/app/")({ component: Dashboard });
 
@@ -17,42 +17,40 @@ function Dashboard() {
   const [gender, setGender] = useState<{ name: string; value: number }[]>([]);
   const [activity, setActivity] = useState<{ title: string; date: string }[]>([]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
-  async function load() {
-    const [s, t, c, a, students, ann] = await Promise.all([
-      supabase.from("students").select("*", { count: "exact", head: true }),
-      supabase.from("teachers").select("*", { count: "exact", head: true }),
-      supabase.from("classes").select("*", { count: "exact", head: true }),
-      supabase.from("attendance").select("status"),
-      supabase.from("students").select("admission_date,gender"),
-      supabase.from("announcements").select("title,created_at").order("created_at", { ascending: false }).limit(5),
-    ]);
-    const total = a.data?.length ?? 0;
-    const present = a.data?.filter(x => x.status === "present").length ?? 0;
+  function load() {
+    const snapshot = getDashboardSnapshot();
+    const students = snapshot.students;
+    const announcements = snapshot.announcements.slice(0, 5);
+
     setStats({
-      students: s.count ?? 0, teachers: t.count ?? 0, classes: c.count ?? 0,
-      attendance: total ? Math.round((present / total) * 100) : 0,
+      students: snapshot.students.length,
+      teachers: snapshot.teachers.length,
+      classes: snapshot.classes.length,
+      attendance: snapshot.attendanceRate,
     });
 
-    // Enrollment last 6 months
     const buckets: Record<string, number> = {};
-    for (let i = 5; i >= 0; i--) {
-      const d = startOfMonth(subMonths(new Date(), i));
-      buckets[format(d, "MMM")] = 0;
+    for (let index = 5; index >= 0; index -= 1) {
+      const date = startOfMonth(subMonths(new Date(), index));
+      buckets[format(date, "MMM")] = 0;
     }
-    students.data?.forEach(st => {
-      const d = new Date(st.admission_date);
-      const key = format(d, "MMM");
-      if (key in buckets) buckets[key]++;
+    students.forEach((student) => {
+      const key = format(new Date(student.admission_date), "MMM");
+      if (key in buckets) buckets[key] += 1;
     });
     setEnrollment(Object.entries(buckets).map(([month, count]) => ({ month, count })));
 
-    const gMap: Record<string, number> = { male: 0, female: 0, other: 0 };
-    students.data?.forEach(st => { if (st.gender) gMap[st.gender]++; });
-    setGender(Object.entries(gMap).filter(([,v]) => v > 0).map(([name, value]) => ({ name: name[0].toUpperCase()+name.slice(1), value })));
+    const genderMap: Record<string, number> = { male: 0, female: 0, other: 0 };
+    students.forEach((student) => {
+      if (student.gender) genderMap[student.gender] += 1;
+    });
+    setGender(Object.entries(genderMap).filter(([, value]) => value > 0).map(([name, value]) => ({ name: name[0].toUpperCase() + name.slice(1), value })));
 
-    setActivity((ann.data ?? []).map(a => ({ title: a.title, date: format(new Date(a.created_at), "MMM d, yyyy") })));
+    setActivity(announcements.map((announcement) => ({ title: announcement.title, date: format(new Date(announcement.created_at), "MMM d, yyyy") })));
   }
 
   const COLORS = ["oklch(0.45 0.15 250)", "oklch(0.65 0.16 150)", "oklch(0.78 0.16 75)"];
@@ -64,9 +62,9 @@ function Dashboard() {
         description="Overview of school operations and performance."
         actions={
           <>
-            <Link to="/app/students"><Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-1"/>Add student</Button></Link>
-            <Link to="/app/attendance"><Button variant="outline" size="sm"><ClipboardCheck className="h-4 w-4 mr-1"/>Attendance</Button></Link>
-            <Link to="/app/fees"><Button size="sm"><Receipt className="h-4 w-4 mr-1"/>Invoice</Button></Link>
+            <Link to="/app/students"><Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-1" />Add student</Button></Link>
+            <Link to="/app/attendance"><Button variant="outline" size="sm"><ClipboardCheck className="h-4 w-4 mr-1" />Attendance</Button></Link>
+            <Link to="/app/fees"><Button size="sm"><Receipt className="h-4 w-4 mr-1" />Invoice</Button></Link>
           </>
         }
       />
@@ -88,7 +86,7 @@ function Dashboard() {
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
-                <Bar dataKey="count" fill="oklch(0.45 0.15 250)" radius={[6,6,0,0]} />
+                <Bar dataKey="count" fill="oklch(0.45 0.15 250)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -100,15 +98,15 @@ function Dashboard() {
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie data={gender} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={3}>
-                  {gender.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  {gender.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex justify-center gap-4 text-xs mt-2">
-              {gender.map((g, i) => (
-                <div key={g.name} className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[i] }} />{g.name}: {g.value}
+              {gender.map((item, index) => (
+                <div key={item.name} className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[index] }} />{item.name}: {item.value}
                 </div>
               ))}
             </div>
@@ -121,10 +119,10 @@ function Dashboard() {
         <CardContent>
           {activity.length === 0 && <div className="text-sm text-muted-foreground">No recent activity.</div>}
           <ul className="space-y-3">
-            {activity.map((a, i) => (
-              <li key={i} className="flex items-center justify-between border-l-2 border-primary pl-3">
-                <span className="text-sm">{a.title}</span>
-                <span className="text-xs text-muted-foreground">{a.date}</span>
+            {activity.map((item, index) => (
+              <li key={index} className="flex items-center justify-between border-l-2 border-primary pl-3">
+                <span className="text-sm">{item.title}</span>
+                <span className="text-xs text-muted-foreground">{item.date}</span>
               </li>
             ))}
           </ul>

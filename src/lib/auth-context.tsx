@@ -1,53 +1,62 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import type { Session, User } from "@supabase/supabase-js";
+import { getSession, signOutDemo, subscribeToAuth, syncFromStorage } from "@/data/mockData";
 
 export type AppRole = "admin" | "teacher" | "parent";
+export type DemoUser = { id: string; email: string; role: AppRole; full_name: string };
+export type DemoSession = { user: DemoUser } | null;
 
 interface AuthContextValue {
-  session: Session | null;
-  user: User | null;
+  session: DemoSession;
+  user: DemoUser | null;
   role: AppRole | null;
   loading: boolean;
-  signOut: () => Promise<void>;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
-  session: null, user: null, role: null, loading: true, signOut: async () => {},
+  session: null,
+  user: null,
+  role: null,
+  loading: true,
+  signOut: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [role, setRole] = useState<AppRole | null>(null);
+  const [session, setSession] = useState<DemoSession>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-      if (s?.user) {
-        setTimeout(() => loadRole(s.user.id), 0);
-      } else {
-        setRole(null);
-      }
+    syncFromStorage();
+    setSession(getSession());
+    setLoading(false);
+
+    const unsubscribe = subscribeToAuth((nextSession: DemoSession) => {
+      setSession(nextSession);
+      setLoading(false);
     });
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      if (s?.user) loadRole(s.user.id).finally(() => setLoading(false));
-      else setLoading(false);
-    });
-    return () => subscription.unsubscribe();
+
+    const onStorage = () => {
+      syncFromStorage();
+      setSession(getSession());
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
-  const loadRole = async (userId: string) => {
-    const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
-    setRole((data?.role as AppRole) ?? "parent");
-  };
-
   return (
-    <AuthContext.Provider value={{
-      session, user: session?.user ?? null, role, loading,
-      signOut: async () => { await supabase.auth.signOut(); },
-    }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        user: session?.user ?? null,
+        role: session?.user.role ?? null,
+        loading,
+        signOut: signOutDemo,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

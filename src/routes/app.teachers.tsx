@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,10 +11,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { deleteTeacher, getTeachers, saveTeacher } from "@/data/mockData";
 
 export const Route = createFileRoute("/app/teachers")({ component: TeachersPage });
 
-type Teacher = { id: string; full_name: string; email: string | null; phone: string | null; department: string | null; subject: string | null; qualifications: string | null; };
+type Teacher = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  department: string | null;
+  subject: string | null;
+  qualifications: string | null;
+};
 
 function TeachersPage() {
   const { role } = useAuth();
@@ -24,49 +32,56 @@ function TeachersPage() {
   const [filter, setFilter] = useState("all");
   const [editing, setEditing] = useState<Partial<Teacher> | null>(null);
 
-  useEffect(() => { load(); }, []);
-  const load = async () => {
-    const { data } = await supabase.from("teachers").select("*").order("full_name");
-    setTeachers((data as Teacher[]) ?? []);
+  useEffect(() => {
+    load();
+  }, []);
+
+  const load = () => {
+    setTeachers(getTeachers() as Teacher[]);
   };
 
-  const departments = Array.from(new Set(teachers.map(t => t.department).filter(Boolean))) as string[];
-  const filtered = filter === "all" ? teachers : teachers.filter(t => t.department === filter);
+  const departments = Array.from(new Set(teachers.map((teacher) => teacher.department).filter(Boolean))) as string[];
+  const filtered = filter === "all" ? teachers : teachers.filter((teacher) => teacher.department === filter);
 
-  const save = async () => {
+  const save = () => {
     if (!editing?.full_name) return toast.error("Name required");
-    const payload = {
-      full_name: editing.full_name, email: editing.email || null, phone: editing.phone || null,
-      department: editing.department || null, subject: editing.subject || null, qualifications: editing.qualifications || null,
-    };
-    const op = editing.id ? supabase.from("teachers").update(payload).eq("id", editing.id) : supabase.from("teachers").insert(payload);
-    const { error } = await op;
-    if (error) return toast.error(error.message);
-    toast.success("Saved"); setEditing(null); load();
+    saveTeacher({
+      id: editing.id,
+      full_name: editing.full_name,
+      email: editing.email || null,
+      phone: editing.phone || null,
+      department: editing.department || null,
+      subject: editing.subject || null,
+      qualifications: editing.qualifications || null,
+    });
+    toast.success("Saved");
+    setEditing(null);
+    load();
   };
 
-  const del = async (id: string) => {
+  const del = (id: string) => {
     if (!confirm("Delete teacher?")) return;
-    const { error } = await supabase.from("teachers").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    deleteTeacher(id);
     load();
   };
 
   return (
     <div>
-      <PageHeader title="Teachers" description="Manage teaching staff and assignments."
+      <PageHeader
+        title="Teachers"
+        description="Manage teaching staff and assignments."
         actions={canEdit && (
-          <Dialog open={!!editing} onOpenChange={(o)=>!o && setEditing(null)}>
-            <DialogTrigger asChild><Button onClick={()=>setEditing({})}><Plus className="h-4 w-4 mr-1"/>Add teacher</Button></DialogTrigger>
+          <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+            <DialogTrigger asChild><Button onClick={() => setEditing({})}><Plus className="h-4 w-4 mr-1" />Add teacher</Button></DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>{editing?.id ? "Edit" : "New"} Teacher</DialogTitle></DialogHeader>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><Label>Full name</Label><Input value={editing?.full_name ?? ""} onChange={e=>setEditing({...editing, full_name: e.target.value})} /></div>
-                <div><Label>Email</Label><Input type="email" value={editing?.email ?? ""} onChange={e=>setEditing({...editing, email: e.target.value})} /></div>
-                <div><Label>Phone</Label><Input value={editing?.phone ?? ""} onChange={e=>setEditing({...editing, phone: e.target.value})} /></div>
-                <div><Label>Department</Label><Input value={editing?.department ?? ""} onChange={e=>setEditing({...editing, department: e.target.value})} /></div>
-                <div><Label>Subject</Label><Input value={editing?.subject ?? ""} onChange={e=>setEditing({...editing, subject: e.target.value})} /></div>
-                <div className="col-span-2"><Label>Qualifications</Label><Input value={editing?.qualifications ?? ""} onChange={e=>setEditing({...editing, qualifications: e.target.value})} /></div>
+                <div className="col-span-2"><Label>Full name</Label><Input value={editing?.full_name ?? ""} onChange={(e) => setEditing({ ...editing, full_name: e.target.value })} /></div>
+                <div><Label>Email</Label><Input type="email" value={editing?.email ?? ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></div>
+                <div><Label>Phone</Label><Input value={editing?.phone ?? ""} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></div>
+                <div><Label>Department</Label><Input value={editing?.department ?? ""} onChange={(e) => setEditing({ ...editing, department: e.target.value })} /></div>
+                <div><Label>Subject</Label><Input value={editing?.subject ?? ""} onChange={(e) => setEditing({ ...editing, subject: e.target.value })} /></div>
+                <div className="col-span-2"><Label>Qualifications</Label><Input value={editing?.qualifications ?? ""} onChange={(e) => setEditing({ ...editing, qualifications: e.target.value })} /></div>
               </div>
               <DialogFooter><Button onClick={save}>Save</Button></DialogFooter>
             </DialogContent>
@@ -80,7 +95,7 @@ function TeachersPage() {
             <SelectTrigger className="w-56"><SelectValue placeholder="Department" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All departments</SelectItem>
-              {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              {departments.map((department) => <SelectItem key={department} value={department}>{department}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -88,16 +103,16 @@ function TeachersPage() {
           <Table>
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Department</TableHead><TableHead>Subject</TableHead><TableHead>Contact</TableHead><TableHead>Qualifications</TableHead><TableHead></TableHead></TableRow></TableHeader>
             <TableBody>
-              {filtered.map(t => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-medium">{t.full_name}</TableCell>
-                  <TableCell>{t.department ?? "—"}</TableCell>
-                  <TableCell>{t.subject ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{t.email}<div className="text-xs text-muted-foreground">{t.phone}</div></TableCell>
-                  <TableCell className="text-sm">{t.qualifications ?? "—"}</TableCell>
+              {filtered.map((teacher) => (
+                <TableRow key={teacher.id}>
+                  <TableCell className="font-medium">{teacher.full_name}</TableCell>
+                  <TableCell>{teacher.department ?? "-"}</TableCell>
+                  <TableCell>{teacher.subject ?? "-"}</TableCell>
+                  <TableCell className="text-sm">{teacher.email}<div className="text-xs text-muted-foreground">{teacher.phone}</div></TableCell>
+                  <TableCell className="text-sm">{teacher.qualifications ?? "-"}</TableCell>
                   <TableCell className="text-right">{canEdit && <>
-                    <Button variant="ghost" size="icon" onClick={()=>setEditing(t)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={()=>del(t.id)}><Trash2 className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setEditing(teacher)}><Pencil className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => del(teacher.id)}><Trash2 className="h-4 w-4" /></Button>
                   </>}</TableCell>
                 </TableRow>
               ))}
